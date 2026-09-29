@@ -24,7 +24,7 @@ def main():
     p.add_argument("--origen", type=Path, default=Path("."))
     a = p.parse_args()
     base = a.url.rstrip("/")
-    fallos = 0
+    fallos = comprobados = 0
     piezas = sorted((a.origen / "diario").glob("*.md")) + [a.origen / "carta-abierta.md"]
     for md in piezas:
         ots = md.with_name(md.name + ".ots")
@@ -39,8 +39,12 @@ def main():
                 obtenido = f"error: {e}"
             ok = obtenido == esperado
             fallos += not ok
+            comprobados += 1
             print(f"{'OK   ' if ok else 'FALLO'} {ruta}  {esperado[:16]}…" + ("" if ok else f"  web: {obtenido[:40]}"))
-    print("Todo cuadra." if not fallos else f"{fallos} archivo(s) no cuadran.")
+    if not comprobados:
+        print(f"No hay piezas selladas en {a.origen}: no se ha comprobado nada.")
+        return 1
+    print(f"Todo cuadra ({comprobados} archivos)." if not fallos else f"{fallos} de {comprobados} archivos no cuadran.")
     return 1 if fallos else 0
 
 
