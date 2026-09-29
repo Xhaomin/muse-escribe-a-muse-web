@@ -1,4 +1,5 @@
 # Archivos sellados: sin normalizar saltos de línea ni tocar un byte.
 diario/** -text
+carta-abierta.md -text
 *.ots binary
 *.sh text eol=lf

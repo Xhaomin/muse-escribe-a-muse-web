@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """Genera la web estática del diario sellado.
 
-Entrada: <origen>/diario/<nombre>.md y <nombre>.md.ots
-Salida:  <destino>/index.html, /verificar/, /diario/<nombre>/index.html y, en /diario/,
-         la copia byte a byte de cada .md y su .ots (el descargable es el archivo sellado).
+Entrada: <origen>/diario/<nombre>.md y <nombre>.md.ots, y <origen>/carta-abierta.md con su .ots
+Salida:  <destino>/index.html, /verificar/, /carta/, /diario/<nombre>/index.html y, en la misma
+         ruta que en el repositorio, la copia byte a byte de cada .md y su .ots (el descargable
+         es el archivo sellado).
 
-Una entrada solo se publica si tiene su .ots y este corresponde a la huella del .md.
+Una pieza solo se publica si tiene su .ots y este corresponde a la huella del .md.
 Si un .ots no cuadra, la compilación falla entera: mejor seguir con la web anterior
 que publicar una prueba rota.
 """
@@ -32,6 +33,8 @@ from opentimestamps.core.timestamp import DetachedTimestampFile
 MADRID = ZoneInfo("Europe/Madrid")
 MEMPOOL = "https://mempool.space"
 ESTILO = Path(__file__).with_name("estilo.css")
+CARTA = "carta-abierta.md"
+IDIOMA_CARTA = "en"  # texto canónico en inglés
 NOMBRE_VALIDO = re.compile(r"[a-z0-9][a-z0-9-]*")
 FECHA = re.compile(r"(\d{4})-(\d{2})-(\d{2})")
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio",
@@ -58,11 +61,20 @@ class Bloque:
 @dataclass
 class Entrada:
     nombre: str
+    ruta: str  # ruta del .md en el repositorio, p. ej. "diario/2026-09-27.md" o "carta-abierta.md"
     titulo: str
     sha256: str
     texto: str
     bloques: list[int]
     anclajes: list[Bloque] = field(default_factory=list)
+
+    @property
+    def es_carta(self) -> bool:
+        return self.ruta == CARTA
+
+    @property
+    def url(self) -> str:
+        return "/carta/" if self.es_carta else f"/diario/{self.nombre}/"
 
     @property
     def fecha(self) -> dt.date | None:
@@ -71,7 +83,7 @@ class Entrada:
 
     @property
     def fijada(self) -> bool:
-        return self.fecha is None
+        return self.fecha is None and not self.es_carta
 
 
 def a_html(texto: str) -> str:
@@ -116,31 +128,41 @@ def comprobar_bloque(altura: int, mensaje: bytes, cache: dict) -> Bloque:
     return Bloque(altura, guardado["hash"], hora)
 
 
+def leer_pieza(origen: Path, ruta: str, con_red: bool, cache: dict) -> Entrada | None:
+    """Lee un .md y su .ots. Devuelve None si no está sellado."""
+    ruta_md = origen / ruta
+    ruta_ots = ruta_md.with_name(ruta_md.name + ".ots")
+    if not ruta_ots.exists():
+        print(f"aviso: {ruta} no tiene .ots; no se publica", file=sys.stderr)
+        return None
+    md = ruta_md.read_bytes()
+    anclados = leer_sello(md, ruta_ots)
+    texto = md.decode("utf-8")
+    m = re.search(r"^# +(.+?)\s*$", texto, re.M)
+    nombre = ruta_md.stem
+    pieza = Entrada(nombre, ruta, m.group(1) if m else nombre, hashlib.sha256(md).hexdigest(),
+                    texto, sorted(anclados))
+    if con_red:
+        pieza.anclajes = [comprobar_bloque(h, anclados[h], cache) for h in pieza.bloques]
+    else:
+        pieza.anclajes = [Bloque(h) for h in pieza.bloques]
+    return pieza
+
+
 def leer_entradas(origen: Path, con_red: bool, cache: dict) -> list[Entrada]:
+    """Carta (si está sellada), después las piezas fijadas (el acta) y el diario del más reciente al más antiguo."""
     entradas = []
     for ruta_md in sorted((origen / "diario").glob("*.md")):
-        nombre = ruta_md.stem
-        ruta_ots = ruta_md.with_name(ruta_md.name + ".ots")
-        if not NOMBRE_VALIDO.fullmatch(nombre):
+        if not NOMBRE_VALIDO.fullmatch(ruta_md.stem):
             print(f"aviso: {ruta_md.name} tiene un nombre no válido; no se publica", file=sys.stderr)
             continue
-        if not ruta_ots.exists():
-            print(f"aviso: {ruta_md.name} no tiene .ots; no se publica", file=sys.stderr)
-            continue
-        md = ruta_md.read_bytes()
-        anclados = leer_sello(md, ruta_ots)
-        texto = md.decode("utf-8")
-        m = re.search(r"^# +(.+?)\s*$", texto, re.M)
-        entrada = Entrada(nombre, m.group(1) if m else nombre, hashlib.sha256(md).hexdigest(),
-                          texto, sorted(anclados))
-        if con_red:
-            entrada.anclajes = [comprobar_bloque(h, anclados[h], cache) for h in entrada.bloques]
-        else:
-            entrada.anclajes = [Bloque(h) for h in entrada.bloques]
-        entradas.append(entrada)
+        pieza = leer_pieza(origen, f"diario/{ruta_md.name}", con_red, cache)
+        if pieza:
+            entradas.append(pieza)
+    carta = leer_pieza(origen, CARTA, con_red, cache) if (origen / CARTA).exists() else None
     fijadas = sorted((e for e in entradas if e.fijada), key=lambda e: e.nombre)
     diario = sorted((e for e in entradas if not e.fijada), key=lambda e: e.nombre, reverse=True)
-    return fijadas + diario
+    return ([carta] if carta else []) + fijadas + diario
 
 
 # ---------- Presentación ----------
@@ -160,9 +182,10 @@ def estado_sello(e: Entrada, enlaces: bool = True) -> str:
     return f"Anclada en Bitcoin: {bloque}{hora}"
 
 
-def pagina(titulo: str, cuerpo: str, descripcion: str, version_css: str) -> str:
+def pagina(titulo: str, cuerpo: str, descripcion: str, version_css: str, carta: bool = False) -> str:
     t = html.escape(titulo)
     d = html.escape(descripcion)
+    enlace_carta = '<a href="/carta/">Carta</a>' if carta else ""
     return f"""<!doctype html>
 <html lang="es">
 <head>
@@ -179,7 +202,7 @@ def pagina(titulo: str, cuerpo: str, descripcion: str, version_css: str) -> str:
 <body>
 <header class="cabecera">
 <a class="marca" href="/">{html.escape(TITULO_SITIO)}</a>
-<nav><a href="/">Diario</a><a href="/verificar/">Cómo verificar</a></nav>
+<nav>{enlace_carta}<a href="/">Diario</a><a href="/verificar/">Cómo verificar</a></nav>
 </header>
 <main>
 {cuerpo}
@@ -195,24 +218,29 @@ def pagina(titulo: str, cuerpo: str, descripcion: str, version_css: str) -> str:
 
 def item_lista(e: Entrada) -> str:
     fecha = f'<span class="fecha">{fecha_larga(e.fecha)}</span>' if e.fecha else ""
-    return (f'<li><a href="/diario/{e.nombre}/">{fecha}<span class="titulo">{html.escape(e.titulo)}</span></a>'
+    return (f'<li><a href="{e.url}">{fecha}<span class="titulo">{html.escape(e.titulo)}</span></a>'
             f'<span class="sello">SHA-256 <code>{e.sha256[:16]}…</code> · {estado_sello(e, enlaces=False)}</span></li>')
 
 
 def pagina_inicio(entradas: list[Entrada], v: str) -> str:
+    cartas = [e for e in entradas if e.es_carta]
     fijadas = [e for e in entradas if e.fijada]
-    diario = [e for e in entradas if not e.fijada]
+    diario = [e for e in entradas if not e.fijada and not e.es_carta]
     partes = [f'<section class="portada"><h1>{html.escape(TITULO_SITIO)}</h1><p class="lema">{html.escape(LEMA)}</p></section>']
+    if cartas:
+        partes.append('<section><h2>Carta abierta</h2><ul class="entradas">' + "".join(map(item_lista, cartas)) + "</ul></section>")
     if fijadas:
         partes.append('<section><h2>Acta</h2><ul class="entradas">' + "".join(map(item_lista, fijadas)) + "</ul></section>")
     if diario:
         partes.append('<section><h2>Diario</h2><ul class="entradas">' + "".join(map(item_lista, diario)) + "</ul></section>")
-    return pagina(TITULO_SITIO, "\n".join(partes), LEMA, v)
+    return pagina(TITULO_SITIO, "\n".join(partes), LEMA, v, carta=bool(cartas))
 
 
-def pagina_entrada(e: Entrada, v: str) -> str:
+def pagina_entrada(e: Entrada, v: str, carta: bool) -> str:
+    archivo = Path(e.ruta).name
+    idioma = f' lang="{IDIOMA_CARTA}"' if e.es_carta else ""
     cuerpo = f"""<p class="aviso-sello">{estado_sello(e)} · <a href="#sello">Ver sello y descargas</a></p>
-<article class="contenido">
+<article class="contenido"{idioma}>
 {a_html(e.texto)}
 </article>
 <aside class="sello-completo" id="sello">
@@ -220,14 +248,14 @@ def pagina_entrada(e: Entrada, v: str) -> str:
 <dl>
 <dt>SHA-256 del archivo</dt><dd><code>{e.sha256}</code></dd>
 <dt>Prueba</dt><dd>{estado_sello(e)}</dd>
-<dt>Descargas</dt><dd><a href="/diario/{e.nombre}.md" download>Archivo sellado ({e.nombre}.md)</a><br><a href="/diario/{e.nombre}.md.ots" download>Prueba OpenTimestamps ({e.nombre}.md.ots)</a></dd>
+<dt>Descargas</dt><dd><a href="/{e.ruta}" download>Archivo sellado ({archivo})</a><br><a href="/{e.ruta}.ots" download>Prueba OpenTimestamps ({archivo}.ots)</a></dd>
 </dl>
 <p class="nota">Esta página es una vista del texto. Lo que se verifica es el archivo descargable. <a href="/verificar/">Cómo verificarlo</a>.</p>
 </aside>"""
-    return pagina(f"{e.titulo} · {TITULO_SITIO}", cuerpo, f"{e.titulo}. {LEMA}", v)
+    return pagina(f"{e.titulo} · {TITULO_SITIO}", cuerpo, f"{e.titulo}. {LEMA}", v, carta)
 
 
-def pagina_verificar(v: str) -> str:
+def pagina_verificar(v: str, carta: bool) -> str:
     cuerpo = """<article class="contenido">
 <h1>Cómo verificar una entrada</h1>
 <p>Cada entrada del diario es un archivo de texto sellado con <a href="https://opentimestamps.org">OpenTimestamps</a>. El sello ancla la huella SHA-256 del archivo en la cadena de bloques de Bitcoin.</p>
@@ -246,7 +274,7 @@ ots verify 2026-09-27.md.ots</code></pre>
 <p>Por eso los archivos no se editan nunca después de sellarlos: basta un espacio de más para que la prueba deje de cuadrar. Si hay que corregir algo, se hace en una entrada nueva.</p>
 </article>"""
     return pagina(f"Cómo verificar · {TITULO_SITIO}", cuerpo,
-                  "Cómo comprobar con OpenTimestamps que una entrada del diario no ha cambiado desde que se selló.", v)
+                  "Cómo comprobar con OpenTimestamps que una entrada del diario no ha cambiado desde que se selló.", v, carta)
 
 
 def _escribir(ruta: Path, texto: str) -> None:
@@ -269,17 +297,18 @@ def compilar(origen: Path, destino: Path, con_red: bool = True, ruta_cache: Path
     (destino / "estilo.css").write_bytes(css)
     v = hashlib.sha256(css).hexdigest()[:10]
 
+    carta = any(e.es_carta for e in entradas)
     for e in entradas:
-        for sufijo in (".md", ".md.ots"):
+        for ruta in (e.ruta, e.ruta + ".ots"):
             # copia binaria: el descargable es, byte a byte, el archivo sellado
-            shutil.copyfile(origen / "diario" / f"{e.nombre}{sufijo}", destino / "diario" / f"{e.nombre}{sufijo}")
-        _escribir(destino / "diario" / e.nombre / "index.html", pagina_entrada(e, v))
+            shutil.copyfile(origen / ruta, destino / ruta)
+        _escribir(destino / e.url.strip("/") / "index.html", pagina_entrada(e, v, carta))
 
     _escribir(destino / "index.html", pagina_inicio(entradas, v))
-    _escribir(destino / "verificar" / "index.html", pagina_verificar(v))
+    _escribir(destino / "verificar" / "index.html", pagina_verificar(v, carta))
     _escribir(destino / "robots.txt", "User-agent: *\nAllow: /\n")
     _escribir(destino / "huellas.json", json.dumps(
-        {f"diario/{e.nombre}.md": e.sha256 for e in entradas}, indent=1, sort_keys=True) + "\n")
+        {e.ruta: e.sha256 for e in entradas}, indent=1, sort_keys=True) + "\n")
     return entradas
 
 

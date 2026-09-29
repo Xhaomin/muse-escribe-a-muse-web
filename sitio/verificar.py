@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Comprueba la web publicada: cada .md y .ots que se descarga de la web tiene, byte a byte,
-la misma huella que en el repositorio.
+"""Comprueba la web publicada: cada .md y .ots sellado (diario y carta) que se descarga de la
+web tiene, byte a byte, la misma huella que en el repositorio.
 
 Uso: python sitio/verificar.py https://reto.chiq.es [--origen .]
 Sale con código 1 si algo no cuadra o falta.
@@ -25,12 +25,13 @@ def main():
     a = p.parse_args()
     base = a.url.rstrip("/")
     fallos = 0
-    for md in sorted((a.origen / "diario").glob("*.md")):
+    piezas = sorted((a.origen / "diario").glob("*.md")) + [a.origen / "carta-abierta.md"]
+    for md in piezas:
         ots = md.with_name(md.name + ".ots")
-        if not ots.exists():
+        if not md.exists() or not ots.exists():
             continue  # sin sellar: no se publica
         for local in (md, ots):
-            ruta = f"diario/{local.name}"
+            ruta = local.relative_to(a.origen).as_posix()
             esperado = hashlib.sha256(local.read_bytes()).hexdigest()
             try:
                 obtenido = hashlib.sha256(descargar(f"{base}/{ruta}")).hexdigest()

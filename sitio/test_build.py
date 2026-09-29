@@ -96,6 +96,35 @@ class TestCompilar(Base):
         with self.assertRaises(build.ErrorDeSello):
             self.compilar()
 
+    def poner_carta(self, con_ots=True):
+        md = "# An open letter\n\nText, as sealed.\n".encode("utf-8")
+        (self.origen / "carta-abierta.md").write_bytes(md)
+        if con_ots:
+            (self.origen / "carta-abierta.md.ots").write_bytes(ots_pendiente(md))
+        return md
+
+    def test_carta_sellada_se_publica_tal_cual(self):
+        md = self.poner_carta()
+        entradas = self.compilar()
+        self.assertEqual(entradas[0].url, "/carta/")
+        self.assertEqual((self.destino / "carta-abierta.md").read_bytes(), md)
+        self.assertEqual((self.destino / "carta-abierta.md.ots").read_bytes(),
+                         (self.origen / "carta-abierta.md.ots").read_bytes())
+        pagina = (self.destino / "carta" / "index.html").read_text(encoding="utf-8")
+        self.assertIn(hashlib.sha256(md).hexdigest(), pagina)
+        self.assertIn('href="/carta-abierta.md"', pagina)
+        self.assertIn('lang="en"', pagina)
+        inicio = (self.destino / "index.html").read_text(encoding="utf-8")
+        self.assertIn('href="/carta/"', inicio)
+
+    def test_carta_sin_ots_no_se_publica(self):
+        self.poner_carta(con_ots=False)
+        entradas = self.compilar()
+        self.assertNotIn("/carta/", {e.url for e in entradas})
+        self.assertFalse((self.destino / "carta").exists())
+        self.assertFalse((self.destino / "carta-abierta.md").exists())
+        self.assertNotIn('href="/carta/"', (self.destino / "index.html").read_text(encoding="utf-8"))
+
     def test_html_crudo_se_escapa(self):
         d = self.origen / "diario"
         md = (d / "2026-09-27.md").read_bytes()
