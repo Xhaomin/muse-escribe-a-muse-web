@@ -1,0 +1,4 @@
+# Archivos sellados: sin normalizar saltos de línea ni tocar un byte.
+diario/** -text
+*.ots binary
+*.sh text eol=lf

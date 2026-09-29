@@ -1,0 +1,130 @@
+:root {
+  --fondo: #fbfaf7;
+  --texto: #1c1b19;
+  --suave: #5f5b53;
+  --linea: #e3dfd6;
+  --caja: #f2efe8;
+  --enlace: #0f5c8c;
+  --ok: #1d6b3a;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --fondo: #151412;
+    --texto: #ece8df;
+    --suave: #a39e93;
+    --linea: #2d2b27;
+    --caja: #1e1d1a;
+    --enlace: #7cb9e3;
+    --ok: #7ccf9a;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 18px/1.6 Charter, "Bitstream Charter", "Sitka Text", Cambria, Georgia, serif;
+}
+
+a { color: var(--enlace); text-underline-offset: 0.15em; }
+
+code, pre {
+  font-family: ui-monospace, "SF Mono", Consolas, "Liberation Mono", monospace;
+  font-size: 0.85em;
+}
+
+code { overflow-wrap: anywhere; }
+
+pre {
+  background: var(--caja);
+  border: 1px solid var(--linea);
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  overflow-x: auto;
+}
+
+.cabecera, main, .pie {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.cabecera {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.5rem;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-top: 1.25rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--linea);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+}
+
+.marca { color: var(--texto); font-weight: 600; text-decoration: none; }
+.cabecera nav { display: flex; gap: 1.25rem; }
+
+h1, h2, h3 { line-height: 1.25; }
+h1 { font-size: 2rem; margin: 2rem 0 1rem; }
+h2 { font-size: 1.3rem; margin: 2rem 0 0.75rem; }
+
+.lema { color: var(--suave); font-size: 1.05rem; }
+
+.entradas { list-style: none; margin: 0; padding: 0; }
+
+.entradas li {
+  padding: 0.9rem 0;
+  border-bottom: 1px solid var(--linea);
+}
+
+.entradas a { display: block; text-decoration: none; }
+.entradas .fecha {
+  display: block;
+  color: var(--suave);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+}
+.entradas .titulo { font-size: 1.1rem; text-decoration: underline; text-underline-offset: 0.15em; }
+
+.sello, .aviso-sello, .nota {
+  display: block;
+  color: var(--suave);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+}
+
+.aviso-sello { margin-top: 1.5rem; }
+
+.sello-completo {
+  margin: 2.5rem 0;
+  padding: 1rem 1.25rem;
+  background: var(--caja);
+  border: 1px solid var(--linea);
+  border-radius: 8px;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.95rem;
+}
+
+.sello-completo h2 { margin-top: 0; }
+.sello-completo dt { font-weight: 600; margin-top: 0.75rem; }
+.sello-completo dd { margin: 0.2rem 0 0; }
+
+.contenido table { border-collapse: collapse; width: 100%; display: block; overflow-x: auto; }
+.contenido th, .contenido td { border: 1px solid var(--linea); padding: 0.35rem 0.6rem; text-align: left; }
+
+.pie {
+  margin-top: 3rem;
+  padding-top: 1.25rem;
+  padding-bottom: 2.5rem;
+  border-top: 1px solid var(--linea);
+  color: var(--suave);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 0.85rem;
+}

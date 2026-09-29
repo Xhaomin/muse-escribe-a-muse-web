@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Comprueba la web publicada: cada .md y .ots que se descarga de la web tiene, byte a byte,
+la misma huella que en el repositorio.
+
+Uso: python sitio/verificar.py https://reto.chiq.es [--origen .]
+Sale con código 1 si algo no cuadra o falta.
+"""
+import argparse
+import hashlib
+import sys
+import urllib.request
+from pathlib import Path
+
+
+def descargar(url):
+    req = urllib.request.Request(url, headers={"User-Agent": "verificar-diario/1.0", "Accept-Encoding": "identity"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return r.read()
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("url")
+    p.add_argument("--origen", type=Path, default=Path("."))
+    a = p.parse_args()
+    base = a.url.rstrip("/")
+    fallos = 0
+    for md in sorted((a.origen / "diario").glob("*.md")):
+        ots = md.with_name(md.name + ".ots")
+        if not ots.exists():
+            continue  # sin sellar: no se publica
+        for local in (md, ots):
+            ruta = f"diario/{local.name}"
+            esperado = hashlib.sha256(local.read_bytes()).hexdigest()
+            try:
+                obtenido = hashlib.sha256(descargar(f"{base}/{ruta}")).hexdigest()
+            except Exception as e:
+                obtenido = f"error: {e}"
+            ok = obtenido == esperado
+            fallos += not ok
+            print(f"{'OK   ' if ok else 'FALLO'} {ruta}  {esperado[:16]}…" + ("" if ok else f"  web: {obtenido[:40]}"))
+    print("Todo cuadra." if not fallos else f"{fallos} archivo(s) no cuadran.")
+    return 1 if fallos else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

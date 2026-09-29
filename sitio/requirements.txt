@@ -1,0 +1,6 @@
+markdown-it-py==4.2.0
+mdurl==0.1.2
+opentimestamps==0.4.5
+pycryptodomex==3.23.0
+python-bitcoinlib==0.12.2
+tzdata==2026.4
